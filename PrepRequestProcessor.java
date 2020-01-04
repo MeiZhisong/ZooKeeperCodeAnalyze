@@ -77,6 +77,8 @@ import org.apache.zookeeper.txn.TxnHeader;
  * in the queue to be applied when generating a transaction.
  */
 // 通常，它是众多RequestProcessor的第一个。它依靠ZooKeeperServer去更新未完成的请求。
+// 个人总结：识别客户端的请求是否是事务请求，对于事务请求，做一些预处理操作，比如：创建事务头，
+// 创建事务体，会话检查，acl检查和版本检查。
 public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
         RequestProcessor {
     private static final Logger LOG = LoggerFactory.getLogger(PrepRequestProcessor.class);
