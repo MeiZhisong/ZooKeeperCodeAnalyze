@@ -76,6 +76,7 @@ import org.apache.zookeeper.txn.TxnHeader;
  * outstandingRequests, so that it can take into account transactions that are
  * in the queue to be applied when generating a transaction.
  */
+// 通常，它是众多RequestProcessor的第一个。它依靠ZooKeeperServer去更新未完成的请求。
 public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
         RequestProcessor {
     private static final Logger LOG = LoggerFactory.getLogger(PrepRequestProcessor.class);
@@ -92,12 +93,16 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
      * this is only for testing purposes.
      * should never be useed otherwise
      */
+     // 做测试用
     private static  boolean failCreate = false;
 
+    // 已经提交的请求队列
     LinkedBlockingQueue<Request> submittedRequests = new LinkedBlockingQueue<Request>();
 
+    // 下一个请求处理器
     RequestProcessor nextProcessor;
 
+    // zookeeper服务器
     ZooKeeperServer zks;
 
     public PrepRequestProcessor(ZooKeeperServer zks,
@@ -120,13 +125,17 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
         try {
             while (true) {
                 Request request = submittedRequests.take();
+                // CLIENT_REQUEST_TRACE_MASK = 2L
                 long traceMask = ZooTrace.CLIENT_REQUEST_TRACE_MASK;
+                // 请求的类型为ping
                 if (request.type == OpCode.ping) {
+                    // CLIENT_PING_TRACE_MASK = 8L
                     traceMask = ZooTrace.CLIENT_PING_TRACE_MASK;
                 }
                 if (LOG.isTraceEnabled()) {
                     ZooTrace.logRequest(LOG, traceMask, 'P', request, "");
                 }
+                // 关闭处理器后，不再处理请求
                 if (Request.requestOfDeath == request) {
                     break;
                 }
@@ -558,8 +567,10 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
             case OpCode.multi:
                 MultiTransactionRecord multiRequest = new MultiTransactionRecord();
                 try {
+                    // 将ByteBuffer转化为Record
                     ByteBufferInputStream.byteBuffer2Record(request.request, multiRequest);
                 } catch(IOException e) {
+                   // 出现异常则重新生成Txn头
                    request.hdr =  new TxnHeader(request.sessionId, request.cxid, zks.getNextZxid(),
                             zks.getTime(), OpCode.multi);
                    throw e;
@@ -569,7 +580,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                 long zxid = zks.getNextZxid();
                 KeeperException ke = null;
 
-                //Store off current pending change records in case we need to rollback
+                // 存储当前待而未决的更改记录，以防需要回滚
                 HashMap<String, ChangeRecord> pendingChanges = getPendingChanges(multiRequest);
 
                 int index = 0;
@@ -580,6 +591,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                      * trying the rest as we know it's going to fail and it
                      * would be confusing in the logfiles.
                      */
+                     //如果众多操作中，有一个失败了。不要尝试操作余下的操作。
                     if (ke != null) {
                         request.hdr.setType(OpCode.error);
                         request.txn = new ErrorTxn(Code.RUNTIMEINCONSISTENCY.intValue());
@@ -593,16 +605,19 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
                             if (ke == null) {
                                 ke = e;
                             }
+                            // 设置请求头的类型
                             request.hdr.setType(OpCode.error);
+                            // 设置请求的txn
                             request.txn = new ErrorTxn(e.code().intValue());
                             LOG.info("Got user-level KeeperException when processing "
                             		+ request.toString() + " aborting remaining multi ops."
                             		+ " Error Path:" + e.getPath()
                             		+ " Error:" + e.getMessage());
-
+                            // 设置异常
                             request.setException(e);
 
                             /* Rollback change records from failed multi-op */
+                            // 回滚操作
                             rollbackPendingChanges(zxid, pendingChanges);
                         }
                     }
@@ -639,6 +654,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
             case OpCode.getChildren2:
             case OpCode.ping:
             case OpCode.setWatches:
+                // 验证绘画
                 zks.sessionTracker.checkSession(request.sessionId,
                         request.getOwner());
                 break;
@@ -676,6 +692,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements
             }
         }
         request.zxid = zks.getZxid();
+        // 将请求传递给下一个处理器处理
         nextProcessor.processRequest(request);
     }
 
