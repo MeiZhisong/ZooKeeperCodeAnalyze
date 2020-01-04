@@ -29,6 +29,10 @@ import org.slf4j.LoggerFactory;
  * This RequestProcessor simply forwards requests to an AckRequestProcessor and
  * SyncRequestProcessor.
  */
+
+// 总结：对于非事务请求，直接将请求交给CommitProcessor。对于事务请求，除了将请求交给CommitProcessor外，还会根据请求的类型创建对应的
+// Proposal提议，发送给所有的Follow服务器来发起一次集群内的事务投票。同时，还会交给SyncRequestProcessor,用于记录事务日志。
+ 
 public class ProposalRequestProcessor implements RequestProcessor {
     private static final Logger LOG =
         LoggerFactory.getLogger(ProposalRequestProcessor.class);
